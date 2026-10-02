@@ -22,6 +22,9 @@ const REDACTED_HEADERS = new Set([
   "x-api-key",
   "api-key",
   "x-vercel-oidc-token",
+  "x-vercel-sc-headers", // embeds a Vercel-internal Bearer JWT
+  "x-vercel-proxy-signature",
+  "forwarded", // carries the proxy signature in its sig= part
 ]);
 
 function sanitizeHeaders(headers: NextApiRequest["headers"]) {
@@ -69,6 +72,26 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       );
       return res.status(400).json({ success: false, error: "Invalid JSON" });
     }
+
+    // One searchable line per delivery (search Vercel logs by eventCode, eventId or folderId).
+    const p = (payload && typeof payload === "object" ? payload : {}) as Record<string, any>;
+    const tsHeader = req.headers["x-fileai-timestamp"];
+    const tsSeconds = Number(Array.isArray(tsHeader) ? tsHeader[0] : tsHeader);
+    console.log(
+      `${LOG_PREFIX} EVENT`,
+      JSON.stringify({
+        receivedAt: new Date().toISOString(),
+        eventCode: p.eventCode ?? null,
+        eventId: p.eventId ?? null,
+        folderId: p.data?.folderId ?? null,
+        fileId: p.data?.fileId ?? null,
+        occurrenceId: p.data?.occurrenceId ?? null,
+        data: p.data ?? null,
+        fileaiTimestamp: Number.isFinite(tsSeconds) ? new Date(tsSeconds * 1000).toISOString() : null,
+        signatureVersion: req.headers["x-fileai-signature-version"] ?? null,
+        correlationId: req.headers["x-correlation-id"] ?? null,
+      })
+    );
 
     console.log(`${LOG_PREFIX} Payload:`, JSON.stringify(payload, null, 2));
 
